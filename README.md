@@ -574,3 +574,55 @@
 - `GET /api/handbooks/{id}/versions`：完整版本链（列表不带打印 HTML 大字段）。
 
 > 新表 `t_invigilation_handbook / t_handbook_version / t_handbook_release / t_handbook_notice` 已纳入工作区快照与回退；schema 版本号 `handbook-1`。
+
+## 跨区监考交通补贴报销工作区（invigilate-fee-1）
+
+跨区监考人员的交通补贴从监考费里**独立核算**：报销模块接入 evops-base 后，按**考点距离、交通方式和审批票据**计算金额，
+**规则版本按出行日期选择**；**改派产生的新路线重新估算，原申请保持只读**。**教师只能提交本人凭证，财务查看全量，
+异常金额转人工审核；确认后的报销只读，要改一律通过调整单修订**。规则同样是**模块（主表）/ 版本（只追加）/ 状态（当前版本）**三段式。
+
+视图口径：所有接口仍走 Shiro HTTP Basic（`bootstrap/bootstrap`）；请求头 **`X-Self-Code=<监考人员编码>`** 即"教师本人视图"
+（只能提交 / 查看本人申请与票据，且提交归属被请求头强制决定，报文冒填他人编码无效）；不传为**财务全量视图**（看全量、确认 / 人工审核 / 改派 / 调整，也可代教师提交）。经办人由 `X-Operator` 记录。
+
+### 58. 距离主数据与交通补贴规则（模块 + 版本 + 状态）
+
+- `POST /api/fee/regions`、`GET /api/fee/regions`：出发区域建档（编码、名称）。
+- `POST /api/fee/distances`、`GET /api/fee/distances?regionCode=&siteId=`：**区域→考点距离**（公里，同对唯一）；这是金额计算的唯一距离口径，未配置报 `FEE_DISTANCE_NOT_CONFIGURED`；停用不物理删。
+- `POST /api/fee-rules`、`GET /api/fee-rules?projectCode=`、`GET /api/fee-rules/{id}`：规则按**项目**建档（缺省 `DEFAULT`，项目无规则回落通用）。
+- `POST /api/fee-rules/{ruleId}/versions`：建草稿版本，口径为
+  `{"modes":[{"transportMode":"CAR","pricePerKm":2.00,"capPerTrip":200}, ...],"anomalyRate":0.20,"anomalyAmountLimit":500}`
+  （交通方式 `BUS 大巴 / TRAIN 火车 / TAXI 出租 / CAR 自驾 / OTHER 其他`，各配**里程单价（元/公里）**与**每程封顶（可空不封顶）**；异常偏差比例 [0,1] 缺省 20%，异常绝对上限可空；同方式不可重复，非法整批拒收）。
+  `GET .../versions`、`GET /api/fee-rules/versions/{versionId}`。
+- `POST /api/fee-rules/versions/{versionId}/publish`：**DRAFT→ACTIVE**，发布即冻结口径，同规则旧生效版自动 **DISABLED**；`POST .../disable` 人工停用（停用版不可重新发布，要改新建版本）。
+- **规则版本按出行日期选择**：取项目在出行日生效的版本——`ACTIVE` 且已发布，或 `DISABLED` 且出行日落其发布（含）至停用（不含）区间；无版本报 `FEE_NO_ACTIVE_VERSION_ON_DATE`，多版本命中报 `FEE_VERSION_AMBIGUOUS`。申请永久记下 `rule_version_no` 与冻结合算金额，规则以后升级不改历史口径。
+
+### 59. 教师提交本人报销（两步；票据取小、每程封顶、异常转人工）
+
+- `POST /api/fee-claims/preview` → `POST /api/fee-claims`：请求
+  `{batchId, regionCode, travelDate?, transportMode, invigilatorCode?(财务代提交用), receipts:[{transportMode?, amount, occurredAt?, fileRef?, contentHash?, originalFilename?, content?, remark?}], remark?}`；
+  出行日期缺省取批次考试日。至少附**一张审批票据**，一票一金额、可多段（去/回程），凭证只追加不可改。
+- 金额口径：**里程估算 = min(里程单价 × 区域→考点距离, 每程封顶)**；**应付 = min(里程估算, 票面合计)**。
+- 预检逐条回显命中距离 / 规则版本 / 单价 / 封顶 / 票面合计 / 应付；执行与预检同一口径。
+- **异常金额自动转人工**（不阻断提交，先进 `MANUAL_REVIEW`）：票面与里程估算偏差比例超版本阈值、票面超异常绝对上限、或票面为 0；异常原因随单可读。
+- 报销号 `BX + 批次编码 + 4 位流水`。
+
+### 60. 本人 / 财务两视图、确认、驳回、人工审核
+
+- 状态机：**SUBMITTED 待财务审核 → CONFIRMED 已确认（只读）**；异常先进 **MANUAL_REVIEW**；旁路 **REJECTED 已驳回 / REASSIGNED 已改派**。
+- `POST /api/fee-claims/{id}/confirm`：财务确认金额正常的报销（SUBMITTED→CONFIRMED，应付锁定，记 confirmed_by/at）；异常单不能直接确认。
+- `POST /api/fee-claims/{id}/reject`：`{reason}` 财务 / 人工驳回（SUBMITTED / MANUAL_REVIEW→REJECTED，须填原因）；已确认 / 已改派单不可驳回。
+- `POST /api/fee-claims/{id}/manual-review`：仅 MANUAL_REVIEW，`{approved, comment?}`——**人工放行即直接确认**（人工对金额负责），**驳回必须写意见**（`FEE_MANUAL_REJECT_COMMENT_REQUIRED`）。
+- 查询：`GET /api/fee-claims[?batchId=&status=&invigilatorCode=]`（带 `X-Self-Code` 强制只看本人，忽略入参里的他人编码）；`GET /api/fee-claims/{id}`、`GET .../{id}/versions`（版本链）、`GET .../{id}/receipts`。看他人单据在本人视图下按无权处理，不暴露存在性。
+
+### 61. 改派：原单只读冻结，新路线重新估算
+
+- `POST /api/fee-claims/{id}/reassign`：`{newBatchId?, newRegionCode?, newTravelDate?, newTransportMode?, newReceipts?, reason}`。
+  原申请追加 **REASSIGN** 版置 **REASSIGNED 只读冻结**（回指新单），并按新批次考点 / 新区域距离 / 新出行日期选规则版本、按新交通方式**新建一条申请重新估算**（回指原单 `reassignOfClaimId`）；已确认 / 已改派单不能再改派。
+  改派时带新票据则新单直接进入待审核（异常仍转人工）；不带则新单先 **DRAFT**，由本人 `POST /api/fee-claims/{id}/submit-receipts`（只需 `receipts`）补票提交，非本人不能补。
+
+### 62. 确认后修订走调整单（只追加）
+
+- `POST /api/fee-claims/{id}/adjustments`：`{adjustAmount（可正可负，非 0）, reason}`——仅 **CONFIRMED** 可调整，只追加 `t_fee_claim_adjustment`，变动额累加到申请应付；未确认单不能调整（正常走审核 / 驳回 / 改派）。
+- `GET /api/fee-claims/{id}/adjustments`：调整台账（本人视图只回本人单）。
+
+> 新表 `t_fee_region / t_fee_distance / t_fee_transport_rule / t_fee_transport_rule_version / t_fee_claim / t_fee_claim_version / t_fee_receipt / t_fee_claim_adjustment` 已纳入工作区快照与回退；schema 版本号 `invigilate-fee-1`。

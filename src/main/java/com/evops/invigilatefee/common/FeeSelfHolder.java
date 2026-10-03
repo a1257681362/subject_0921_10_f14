@@ -1,0 +1,40 @@
+package com.evops.invigilatefee.common;
+
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import javax.servlet.http.HttpServletRequest;
+
+/**
+ * 视图身份解析：请求头 X-Self-Code 传监考人员编码时为“教师本人视图”（只能提交 / 查看本人申请与票据）；
+ * 不传则为财务全量视图。鉴权仍走 Shiro HTTP Basic，这里只决定数据可见范围与提交归属。
+ * 与 appoint 模块同一请求头口径，但本模块独立持有，避免跨模块耦合。
+ */
+public final class FeeSelfHolder {
+
+    private FeeSelfHolder() {
+    }
+
+    /** 返回本人编码；为空表示财务全量视图。 */
+    public static String currentSelfCode() {
+        try {
+            ServletRequestAttributes attrs =
+                    (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs == null) {
+                return null;
+            }
+            HttpServletRequest request = attrs.getRequest();
+            String code = request.getHeader(InvigilateFeeConstants.SELF_HEADER);
+            if (isBlank(code)) {
+                code = request.getParameter("selfCode");
+            }
+            return isBlank(code) ? null : code.trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+}

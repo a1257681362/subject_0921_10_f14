@@ -77,6 +77,14 @@ import com.evops.handbook.entity.HandbookNotice;
 import com.evops.handbook.entity.HandbookRelease;
 import com.evops.handbook.entity.HandbookVersion;
 import com.evops.handbook.entity.InvigilationHandbook;
+import com.evops.invigilatefee.entity.FeeClaim;
+import com.evops.invigilatefee.entity.FeeClaimAdjustment;
+import com.evops.invigilatefee.entity.FeeClaimVersion;
+import com.evops.invigilatefee.entity.FeeDistance;
+import com.evops.invigilatefee.entity.FeeReceipt;
+import com.evops.invigilatefee.entity.FeeRegion;
+import com.evops.invigilatefee.entity.FeeTransportRule;
+import com.evops.invigilatefee.entity.FeeTransportRuleVersion;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -1397,4 +1405,142 @@ public interface RestoreMapper {
 
     @Update("ALTER TABLE t_handbook_notice ALTER COLUMN id RESTART WITH ${value}")
     void restartHandbookNotice(@Param("value") long value);
+
+    // ============ invigilate-fee-1：跨区监考交通补贴报销 ============
+    @Delete("DELETE FROM t_fee_claim_adjustment")
+    void clearFeeAdjustments();
+
+    @Delete("DELETE FROM t_fee_receipt")
+    void clearFeeReceipts();
+
+    @Delete("DELETE FROM t_fee_claim_version")
+    void clearFeeClaimVersions();
+
+    @Delete("DELETE FROM t_fee_claim")
+    void clearFeeClaims();
+
+    @Delete("DELETE FROM t_fee_transport_rule_version")
+    void clearFeeRuleVersions();
+
+    @Delete("DELETE FROM t_fee_transport_rule")
+    void clearFeeRules();
+
+    @Delete("DELETE FROM t_fee_distance")
+    void clearFeeDistances();
+
+    @Delete("DELETE FROM t_fee_region")
+    void clearFeeRegions();
+
+    @Insert("INSERT INTO t_fee_region (id, code, name, status, remark, "
+            + "create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{code},#{name},#{status},#{remark},"
+            + "#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeRegion(FeeRegion r);
+
+    @Insert("INSERT INTO t_fee_distance (id, region_id, region_code, site_id, site_code, site_name, distance_km, "
+            + "status, remark, create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{regionId},#{regionCode},#{siteId},#{siteCode},#{siteName},#{distanceKm},"
+            + "#{status},#{remark},#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeDistance(FeeDistance d);
+
+    @Insert("INSERT INTO t_fee_transport_rule (id, code, name, project_code, status, remark, "
+            + "create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{code},#{name},#{projectCode},#{status},#{remark},"
+            + "#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeRule(FeeTransportRule r);
+
+    @Insert("INSERT INTO t_fee_transport_rule_version (id, rule_id, version_no, status, modes_json, anomaly_rate, "
+            + "anomaly_amount_limit, remark, published_by, published_at, disabled_by, disabled_at, operator, "
+            + "create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{ruleId},#{versionNo},#{status},#{modesJson},#{anomalyRate},"
+            + "#{anomalyAmountLimit},#{remark},#{publishedBy},#{publishedAt},#{disabledBy},#{disabledAt},"
+            + "#{operator},#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeRuleVersion(FeeTransportRuleVersion v);
+
+    @Insert("INSERT INTO t_fee_claim (id, claim_no, batch_id, batch_code, project_code, site_id, site_code, "
+            + "site_name, invigilator_id, invigilator_code, invigilator_name, region_id, region_code, region_name, "
+            + "distance_km, travel_date, rule_id, rule_code, rule_version_id, rule_version_no, transport_mode, "
+            + "estimated_amount, declared_amount, payable_amount, current_version, status, abnormal, "
+            + "reassign_of_claim_id, reassigned_to_claim_id, confirmed_by, confirmed_at, reviewed_by, reviewed_at, "
+            + "review_comment, closed_remark, remark, operator, "
+            + "create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{claimNo},#{batchId},#{batchCode},#{projectCode},#{siteId},#{siteCode},"
+            + "#{siteName},#{invigilatorId},#{invigilatorCode},#{invigilatorName},#{regionId},#{regionCode},"
+            + "#{regionName},#{distanceKm},#{travelDate},#{ruleId},#{ruleCode},#{ruleVersionId},"
+            + "#{ruleVersionNo},#{transportMode},#{estimatedAmount},#{declaredAmount},#{payableAmount},"
+            + "#{currentVersion},#{status},#{abnormal},#{reassignOfClaimId},#{reassignedToClaimId},"
+            + "#{confirmedBy},#{confirmedAt},#{reviewedBy},#{reviewedAt},#{reviewComment},#{closedRemark},"
+            + "#{remark},#{operator},#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeClaim(FeeClaim c);
+
+    @Insert("INSERT INTO t_fee_claim_version (id, claim_id, version_no, change_type, status, transport_mode, "
+            + "distance_km, estimated_amount, declared_amount, payable_amount, abnormal, rule_version_no, "
+            + "change_reason, operator, changed_at, create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{claimId},#{versionNo},#{changeType},#{status},#{transportMode},"
+            + "#{distanceKm},#{estimatedAmount},#{declaredAmount},#{payableAmount},#{abnormal},"
+            + "#{ruleVersionNo},#{changeReason},#{operator},#{changedAt},"
+            + "#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeClaimVersion(FeeClaimVersion v);
+
+    @Insert("INSERT INTO t_fee_receipt (id, claim_id, transport_mode, amount, occurred_at, file_ref, content_hash, "
+            + "original_filename, content, remark, operator, create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{claimId},#{transportMode},#{amount},#{occurredAt},#{fileRef},#{contentHash},"
+            + "#{originalFilename},#{content},#{remark},#{operator},"
+            + "#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeReceipt(FeeReceipt r);
+
+    @Insert("INSERT INTO t_fee_claim_adjustment (id, claim_id, invigilator_id, invigilator_code, invigilator_name, "
+            + "adjust_amount, reason, operator, adjusted_at, create_by, create_time, update_by, update_time) VALUES "
+            + "(#{id},#{claimId},#{invigilatorId},#{invigilatorCode},#{invigilatorName},"
+            + "#{adjustAmount},#{reason},#{operator},#{adjustedAt},"
+            + "#{createBy},#{createTime},#{updateBy},#{updateTime})")
+    void insertFeeAdjustment(FeeClaimAdjustment a);
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_region")
+    long maxFeeRegionId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_distance")
+    long maxFeeDistanceId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_transport_rule")
+    long maxFeeRuleId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_transport_rule_version")
+    long maxFeeRuleVersionId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_claim")
+    long maxFeeClaimId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_claim_version")
+    long maxFeeClaimVersionId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_receipt")
+    long maxFeeReceiptId();
+
+    @Select("SELECT COALESCE(MAX(id),0) FROM t_fee_claim_adjustment")
+    long maxFeeAdjustmentId();
+
+    @Update("ALTER TABLE t_fee_region ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeRegion(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_distance ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeDistance(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_transport_rule ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeRule(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_transport_rule_version ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeRuleVersion(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_claim ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeClaim(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_claim_version ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeClaimVersion(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_receipt ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeReceipt(@Param("value") long value);
+
+    @Update("ALTER TABLE t_fee_claim_adjustment ALTER COLUMN id RESTART WITH ${value}")
+    void restartFeeAdjustment(@Param("value") long value);
 }

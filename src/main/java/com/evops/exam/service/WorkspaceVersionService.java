@@ -152,6 +152,22 @@ import com.evops.handbook.mapper.HandbookNoticeMapper;
 import com.evops.handbook.mapper.HandbookReleaseMapper;
 import com.evops.handbook.mapper.HandbookVersionMapper;
 import com.evops.handbook.mapper.InvigilationHandbookMapper;
+import com.evops.invigilatefee.entity.FeeClaim;
+import com.evops.invigilatefee.entity.FeeClaimAdjustment;
+import com.evops.invigilatefee.entity.FeeClaimVersion;
+import com.evops.invigilatefee.entity.FeeDistance;
+import com.evops.invigilatefee.entity.FeeReceipt;
+import com.evops.invigilatefee.entity.FeeRegion;
+import com.evops.invigilatefee.entity.FeeTransportRule;
+import com.evops.invigilatefee.entity.FeeTransportRuleVersion;
+import com.evops.invigilatefee.mapper.FeeClaimAdjustmentMapper;
+import com.evops.invigilatefee.mapper.FeeClaimMapper;
+import com.evops.invigilatefee.mapper.FeeClaimVersionMapper;
+import com.evops.invigilatefee.mapper.FeeDistanceMapper;
+import com.evops.invigilatefee.mapper.FeeReceiptMapper;
+import com.evops.invigilatefee.mapper.FeeRegionMapper;
+import com.evops.invigilatefee.mapper.FeeTransportRuleMapper;
+import com.evops.invigilatefee.mapper.FeeTransportRuleVersionMapper;
 import com.evops.exam.mapper.AdmissionTicketMapper;
 import com.evops.exam.mapper.ExamBatchMapper;
 import com.evops.exam.mapper.ExamRoomMapper;
@@ -262,6 +278,14 @@ public class WorkspaceVersionService {
     private final HandbookVersionMapper handbookVersionMapper;
     private final HandbookReleaseMapper handbookReleaseMapper;
     private final HandbookNoticeMapper handbookNoticeMapper;
+    private final FeeRegionMapper feeRegionMapper;
+    private final FeeDistanceMapper feeDistanceMapper;
+    private final FeeTransportRuleMapper feeRuleMapper;
+    private final FeeTransportRuleVersionMapper feeRuleVersionMapper;
+    private final FeeClaimMapper feeClaimMapper;
+    private final FeeClaimVersionMapper feeClaimVersionMapper;
+    private final FeeReceiptMapper feeReceiptMapper;
+    private final FeeClaimAdjustmentMapper feeAdjustmentMapper;
     private final ObjectMapper objectMapper;
     private final RestoreMapper restoreMapper;
 
@@ -344,6 +368,14 @@ public class WorkspaceVersionService {
                                    HandbookVersionMapper handbookVersionMapper,
                                    HandbookReleaseMapper handbookReleaseMapper,
                                    HandbookNoticeMapper handbookNoticeMapper,
+                                   FeeRegionMapper feeRegionMapper,
+                                   FeeDistanceMapper feeDistanceMapper,
+                                   FeeTransportRuleMapper feeRuleMapper,
+                                   FeeTransportRuleVersionMapper feeRuleVersionMapper,
+                                   FeeClaimMapper feeClaimMapper,
+                                   FeeClaimVersionMapper feeClaimVersionMapper,
+                                   FeeReceiptMapper feeReceiptMapper,
+                                   FeeClaimAdjustmentMapper feeAdjustmentMapper,
                                    ObjectMapper objectMapper,
                                    RestoreMapper restoreMapper) {
         this.versionMapper = versionMapper;
@@ -425,6 +457,14 @@ public class WorkspaceVersionService {
         this.handbookVersionMapper = handbookVersionMapper;
         this.handbookReleaseMapper = handbookReleaseMapper;
         this.handbookNoticeMapper = handbookNoticeMapper;
+        this.feeRegionMapper = feeRegionMapper;
+        this.feeDistanceMapper = feeDistanceMapper;
+        this.feeRuleMapper = feeRuleMapper;
+        this.feeRuleVersionMapper = feeRuleVersionMapper;
+        this.feeClaimMapper = feeClaimMapper;
+        this.feeClaimVersionMapper = feeClaimVersionMapper;
+        this.feeReceiptMapper = feeReceiptMapper;
+        this.feeAdjustmentMapper = feeAdjustmentMapper;
         this.objectMapper = objectMapper;
         this.restoreMapper = restoreMapper;
     }
@@ -612,6 +652,14 @@ public class WorkspaceVersionService {
             data.put("handbookVersions", handbookVersionMapper.selectList(null));
             data.put("handbookReleases", handbookReleaseMapper.selectList(null));
             data.put("handbookNotices", handbookNoticeMapper.selectList(null));
+            data.put("feeRegions", feeRegionMapper.selectList(null));
+            data.put("feeDistances", feeDistanceMapper.selectList(null));
+            data.put("feeRules", feeRuleMapper.selectList(null));
+            data.put("feeRuleVersions", feeRuleVersionMapper.selectList(null));
+            data.put("feeClaims", feeClaimMapper.selectList(null));
+            data.put("feeClaimVersions", feeClaimVersionMapper.selectList(null));
+            data.put("feeReceipts", feeReceiptMapper.selectList(null));
+            data.put("feeAdjustments", feeAdjustmentMapper.selectList(null));
             return objectMapper.writeValueAsString(data);
         } catch (Exception e) {
             throw new BusinessException("SNAPSHOT_FAILED", "生成工作区快照失败：" + e.getMessage());
@@ -629,6 +677,14 @@ public class WorkspaceVersionService {
         // 先清空业务表（版本表本身不动），再按快照原样写回。
         // 用显式带主键的原生 INSERT：准考证、成绩等表的外键依赖原始 id，
         // H2 的 GENERATED BY DEFAULT 允许指定 id 插入。
+        restoreMapper.clearFeeAdjustments();
+        restoreMapper.clearFeeReceipts();
+        restoreMapper.clearFeeClaimVersions();
+        restoreMapper.clearFeeClaims();
+        restoreMapper.clearFeeRuleVersions();
+        restoreMapper.clearFeeRules();
+        restoreMapper.clearFeeDistances();
+        restoreMapper.clearFeeRegions();
         restoreMapper.clearHandbookNotices();
         restoreMapper.clearHandbookReleases();
         restoreMapper.clearHandbookVersions();
@@ -938,6 +994,30 @@ public class WorkspaceVersionService {
         for (HandbookNotice n : nullSafe(data.handbookNotices)) {
             restoreMapper.insertHandbookNotice(n);
         }
+        for (FeeRegion r : nullSafe(data.feeRegions)) {
+            restoreMapper.insertFeeRegion(r);
+        }
+        for (FeeDistance d : nullSafe(data.feeDistances)) {
+            restoreMapper.insertFeeDistance(d);
+        }
+        for (FeeTransportRule r : nullSafe(data.feeRules)) {
+            restoreMapper.insertFeeRule(r);
+        }
+        for (FeeTransportRuleVersion v : nullSafe(data.feeRuleVersions)) {
+            restoreMapper.insertFeeRuleVersion(v);
+        }
+        for (FeeClaim c : nullSafe(data.feeClaims)) {
+            restoreMapper.insertFeeClaim(c);
+        }
+        for (FeeClaimVersion v : nullSafe(data.feeClaimVersions)) {
+            restoreMapper.insertFeeClaimVersion(v);
+        }
+        for (FeeReceipt r : nullSafe(data.feeReceipts)) {
+            restoreMapper.insertFeeReceipt(r);
+        }
+        for (FeeClaimAdjustment a : nullSafe(data.feeAdjustments)) {
+            restoreMapper.insertFeeAdjustment(a);
+        }
 
         // 显式插 id 不推进 IDENTITY，统一把序列重置到 MAX(id)+1，避免回退后新增撞主键
         restoreMapper.restartSite(restoreMapper.maxSiteId() + 1);
@@ -1017,6 +1097,14 @@ public class WorkspaceVersionService {
         restoreMapper.restartHandbookVersion(restoreMapper.maxHandbookVersionId() + 1);
         restoreMapper.restartHandbookRelease(restoreMapper.maxHandbookReleaseId() + 1);
         restoreMapper.restartHandbookNotice(restoreMapper.maxHandbookNoticeId() + 1);
+        restoreMapper.restartFeeRegion(restoreMapper.maxFeeRegionId() + 1);
+        restoreMapper.restartFeeDistance(restoreMapper.maxFeeDistanceId() + 1);
+        restoreMapper.restartFeeRule(restoreMapper.maxFeeRuleId() + 1);
+        restoreMapper.restartFeeRuleVersion(restoreMapper.maxFeeRuleVersionId() + 1);
+        restoreMapper.restartFeeClaim(restoreMapper.maxFeeClaimId() + 1);
+        restoreMapper.restartFeeClaimVersion(restoreMapper.maxFeeClaimVersionId() + 1);
+        restoreMapper.restartFeeReceipt(restoreMapper.maxFeeReceiptId() + 1);
+        restoreMapper.restartFeeAdjustment(restoreMapper.maxFeeAdjustmentId() + 1);
     }
 
     private <T> List<T> nullSafe(List<T> list) {
@@ -1158,5 +1246,13 @@ public class WorkspaceVersionService {
         public List<HandbookVersion> handbookVersions;
         public List<HandbookRelease> handbookReleases;
         public List<HandbookNotice> handbookNotices;
+        public List<FeeRegion> feeRegions;
+        public List<FeeDistance> feeDistances;
+        public List<FeeTransportRule> feeRules;
+        public List<FeeTransportRuleVersion> feeRuleVersions;
+        public List<FeeClaim> feeClaims;
+        public List<FeeClaimVersion> feeClaimVersions;
+        public List<FeeReceipt> feeReceipts;
+        public List<FeeClaimAdjustment> feeAdjustments;
     }
 }
