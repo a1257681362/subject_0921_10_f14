@@ -574,3 +574,50 @@
 - `GET /api/handbooks/{id}/versions`：完整版本链（列表不带打印 HTML 大字段）。
 
 > 新表 `t_invigilation_handbook / t_handbook_version / t_handbook_release / t_handbook_notice` 已纳入工作区快照与回退；schema 版本号 `handbook-1`。
+
+## 跨区监考交通补贴独立核算工作区（invigilate-fee-1）
+
+把**跨区监考人员的交通补贴**从监考费里独立出来单独核算：**按考点距离 + 交通方式 + 审批票据**，由交通补贴规则版本**自动试算金额**，**规则版本按出行日期选取并冻结**；**改派产生新路线则重新估算，原申请保持只读**留版本；**教师只能提交本人凭证、财务看全量**；**异常金额转人工审核**；**确认后锁定，修订一律走调整单**（只追加）。报销分**模块（主表）/ 版本（只追加）/ 状态（当前版本）**三段。
+
+视图口径：所有接口仍走 Shiro HTTP Basic（`bootstrap/bootstrap`）；请求头 **`X-Self-Code=<监考人员编码>`** 即"教师本人视图"，只能为本人申请 / 改派 / 提交凭证 / 查询本人单；**不传为财务全量视图**，可看全量、转人工核定、确认、调整。教师执行财务动作返回 `FINANCE_ONLY`，越权操作他人单返回 `FORBIDDEN_NOT_OWN`。经办人由 `X-Operator` 记录。
+
+### 58. 规则模块 / 版本 + 考点里程主数据
+
+- `POST /api/travel-allowance-rules`、`GET /api/travel-allowance-rules[?projectCode=]`：交通补贴规则模块（按项目一套，缺省 `DEFAULT` 通用）。
+- `POST /api/travel-allowance-rules/{id}/versions`、`GET .../versions`：版本 `{effectiveFrom?, effectiveTo?, deviationThreshold?(默认0.20), tariffs:[{transportMode, calcMode, perKmRate?, capAmount?, fixedAmount?, minDistance?, receiptRequired?}]}`。
+  - 交通方式 `BUS 公交大巴 / RAIL 火车 / TAXI 出租网约车 / SELF_DRIVE 自驾 / OTHER`；计费方式 `DISTANCE 单价×里程（可设最低里程门槛与封顶）/ FIXED 定额`；发布（DRAFT→ACTIVE）即把口径冻结为 JSON，`POST /api/travel-allowance-rules/versions/{versionId}/publish|disable`。
+  - **同一规则的生效区间不允许重叠**（`RULE_VERSION_RANGE_OVERLAP`），保证按出行日期唯一命中；停用不删版本，历史报销保留版本号。
+- `POST /api/site-distances`、`GET /api/site-distances[?siteId=&originCode=]`、`POST /api/site-distances/{id}/disable`：出发地 → 考点单程公里数（同一起讫唯一），是按里程试算的唯一口径来源。
+
+### 59. 试算 / 申请（规则版本按出行日期选取并冻结，金额独立核算）
+
+- `POST /api/travel-reimbursements/preview`：`{batchId, invigilatorCode, originCode, transportMode, travelDate}`，不落库，返回命中的规则版本号、里程、计费方式与试算金额及算式说明。考点由批次带出，项目专用规则缺失时回落 `DEFAULT`；当日无生效版本 `RULE_VERSION_NOT_ACTIVE`、里程未建档 `SITE_DISTANCE_NOT_FOUND`。
+- `POST /api/travel-reimbursements`：正式申请，生成 **DRAFT** 与首版 **CREATE**，把**规则版本 id/版本号、计费方式、里程、试算金额冻结进版本链**；以后改标准不影响本单口径。报销单号 `TB<批次编码>-0001`。
+
+### 60. 教师提交本人凭证 → 提交（异常金额自动转人工）
+
+- `POST /api/travel-reimbursements/{id}/receipts`：教师在草稿期提交**本人**票据 `{receiptType, receiptNo?, amount, travelDate?, attachmentRef?, submitRemark?}`，可多次提交；只能操作本人单。
+- `POST /api/travel-reimbursements/{id}/submit`：合计已提交票据并判定——
+  - 方式 `receiptRequired=true` 却无凭证 → `RECEIPT_REQUIRED` 拒绝；
+  - **票据合计与试算金额偏离超过版本阈值（默认 ±20%）→ MANUAL_REVIEW 转人工**，记录异常原因并追加版本；
+  - 否则 → **SUBMITTED** 待财务确认。无票按里程方式（如公交）可直接提交。
+- `GET /api/travel-reimbursements/{id}/receipts`：本人 / 财务查看票据。
+
+### 61. 改派：新路线重新估算，原申请只读
+
+- `POST /api/travel-reimbursements/{id}/reroute`：`{batchId(新考点/项目), originCode, transportMode, travelDate, reason?}`。
+  已确认锁定（`REIMBURSEMENT_LOCKED`）或已驳回不能改派。改派时写一条 `t_travel_route_change`（原/新路线、考点、方式、出行日期、两版金额），主表切到新路线并**按新出行日期重新选规则版本、重新估算、重新冻结**，回到 **DRAFT** 并追加 **REROUTE** 版；**原申请的路线与金额作为历史版本只读保留**，原路线已提交票据置 REJECTED 不予核入新路线（需重新提交凭证）。
+- `GET /api/travel-reimbursements/route-changes[?batchId=]`、`GET /api/travel-reimbursements/{id}/route-changes`：改派记录（本人视图只回本人单的改派）。
+
+### 62. 财务全量 / 人工核定 / 确认锁定
+
+- `GET /api/travel-reimbursements[?batchId=&status=&invigilatorCode=]`：列表——本人视图强制只回本人，财务全量可过滤；`GET /api/travel-reimbursements/{id}` 与 `GET /api/travel-reimbursements/{id}/detail`（回报销单 + 票据 + 调整台账 + `payableAmount`，响应标 `view=FINANCE_ALL/SELF`）；`GET /api/travel-reimbursements/{id}/versions` 查完整版本链。
+- `GET /api/travel-reimbursements/manual-queue`：财务异常待人工清单。
+- `POST /api/travel-reimbursements/{id}/manual-review`：`{approved, approvedAmount?, comment?}`——放行可显式给核定金额（缺省取票据合计，无票取试算）转 SUBMITTED；驳回 `approved=false` 必须写原因（`MANUAL_REJECT_REASON_REQUIRED`）→ REJECTED。仅 MANUAL_REVIEW 可处理。
+- `POST /api/travel-reimbursements/{id}/confirm`：财务确认 → **CONFIRMED 锁定**。核定金额沿用人工核定额（异常单）、否则取票据合计或试算；已提交票据置 APPROVED；之后不能再改派 / 提交，修订只能走调整。
+
+### 63. 确认后调整单修订（只追加）
+
+- `POST /api/travel-reimbursements/{id}/adjustments`：`{adjustAmount(可正可负,≠0), reason}`，**仅已确认单**可调整（`ADJUST_ONLY_AFTER_CONFIRM`），只追加 `t_reimbursement_adjustment`，变动额累加到报销单 `adjustTotal`，**最终应付 = 核定金额 + 调整累计**；`GET /api/travel-reimbursements/{id}/adjustments` 查台账。
+
+> 新表 `t_travel_allowance_rule / t_travel_allowance_rule_version / t_site_distance / t_travel_reimbursement / t_travel_reimb_version / t_travel_route_change / t_travel_receipt / t_reimbursement_adjustment` 已纳入工作区快照与回退；schema 版本号 `invigilate-fee-1`。

@@ -84,6 +84,7 @@ class HandbookFlowTest {
 
         // 1. 写入即待确认
         InvigilationHandbook handbook = handbookService.create(buildCreate(batchA));
+        final Long handbookId = handbook.getId();
         assertEquals(HandbookConstants.HANDBOOK_PENDING, handbook.getStatus());
         assertEquals(1, handbook.getCurrentVersionNo());
 
@@ -92,7 +93,7 @@ class HandbookFlowTest {
 
         // 待确认时不能下载打印版
         assertThrows(BusinessException.class,
-                () -> handbookService.viewPrintHtml(handbook.getId(), null, null));
+                () -> handbookService.viewPrintHtml(handbookId, null, null));
 
         // 2. 负责人放行 → 生成打印版
         HandbookReleaseRequest releaseReq = new HandbookReleaseRequest();
@@ -119,7 +120,7 @@ class HandbookFlowTest {
 
         // 无待确认版本时重复放行拒收
         assertThrows(BusinessException.class,
-                () -> handbookService.release(handbook.getId(), null));
+                () -> handbookService.release(handbookId, null));
 
         // 3. 调整另建版本：只改应急联系人，其余沿用上一版
         HandbookAdjustRequest adjustReq = new HandbookAdjustRequest();
@@ -176,12 +177,12 @@ class HandbookFlowTest {
         assertEquals(1, handbookService.list("SITE-A").size());
         // 越权访问他考点手册：先建 B 考点手册并放行
         InvigilationHandbook handbookB = handbookService.create(buildCreate(batchB));
-        handbookB = handbookService.get(handbookB.getId(), null);
+        final Long handbookBId = handbookB.getId();
         // 用 SITE-A 范围访问 B 手册被拒
         assertThrows(BusinessException.class,
-                () -> handbookService.get(handbookB.getId(), "SITE-A"));
+                () -> handbookService.get(handbookBId, "SITE-A"));
         assertThrows(BusinessException.class,
-                () -> handbookService.viewPrintHtml(handbookB.getId(), null, "SITE-A"));
+                () -> handbookService.viewPrintHtml(handbookBId, null, "SITE-A"));
         // 本考点可访问
         assertNotNull(handbookService.get(handbookB.getId(), "SITE-B"));
 
